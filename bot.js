@@ -16,9 +16,9 @@ db.connect(err => {
 
 db.query('CREATE TABLE IF NOT EXISTS myschema.mytable (i integer)');
 
-db.query('INSERT INTO myschema.mytable (value) VALUES (5)');
+db.query('INSERT INTO mytable (value) VALUES (5)');
 
-db.query('SELECT i FROM myschema.mytable', (err, res) => {
+db.query('SELECT i FROM mytable', (err, res) => {
   if (err) throw err;
   for (let row of res.rows) {
     console.log(row);
