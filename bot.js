@@ -21,7 +21,7 @@ db.query('INSERT INTO mytable (i) VALUES (5)');
 db.query('SELECT i FROM mytable', (err, res) => {
   if (err) throw err;
   for (let row of res.rows) {
-    console.log(row[0]);
+    console.log(row[0].i);
     //console.log(JSON.stringify(row));
   }
   db.end();
