@@ -16,7 +16,7 @@ db.connect(err => {
 
 db.query('CREATE TABLE IF NOT EXISTS mytable (i integer)');
 
-db.query('INSERT INTO mytable (value) VALUES (5)');
+db.query('INSERT INTO mytable (i) VALUES (5)');
 
 db.query('SELECT i FROM mytable', (err, res) => {
   if (err) throw err;
