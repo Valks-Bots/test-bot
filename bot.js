@@ -14,7 +14,7 @@ db.connect(err => {
   console.log('Connected!');
 });
 
-db.query('CREATE TABLE IF NOT EXISTS myschema.mytable (i integer)');
+db.query('CREATE TABLE IF NOT EXISTS mytable (i integer)');
 
 db.query('INSERT INTO mytable (value) VALUES (5)');
 
