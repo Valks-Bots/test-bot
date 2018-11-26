@@ -5,13 +5,26 @@ const {
 } = require('pg');
 
 const db = new Client({
-  connectionString: process.env.DATABASE_URL || "localhost",
+  connectionString: process.env.DATABASE_URL,
   ssl: true,
 });
 
 db.connect(err => {
   if (err) throw err;
   console.log('Connected!');
+});
+
+db.query('CREATE TABLE IF NOT EXISTS myschema.mytable (i integer)');
+
+db.query('INSERT INTO myschema.mytable (value) VALUES (5)');
+
+db.query('SELECT i FROM myschema.mytable', (err, res) => {
+  if (err) throw err;
+  for (let row of res.rows) {
+    console.log(row);
+    //console.log(JSON.stringify(row));
+  }
+  db.end();
 });
 
 client.on('ready', () => {
