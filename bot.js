@@ -25,7 +25,7 @@ if (process.env.DATABASE_URL) {
     user: 'postgres',
     host: 'localhost',
     database: 'postgres',
-    password: secret.dbpswrd,
+    password: process.env.DATABASE_PASSWORD || secret.dbpswrd,
     port: 5432,
   });
 }
@@ -50,7 +50,7 @@ client.on('message', async msg => {
     msg.member.voiceChannel.join().then(connection => {
       const opts = {
         maxResults: 1,
-        key: secret.youtube_api_key,
+        key: process.env.YOUTUBE_API_TOKEN || secret.youtube_api_key,
         order: 'viewCount'
       };
       const streamOptions = {
