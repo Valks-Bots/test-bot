@@ -16,16 +16,18 @@ const {
 let db;
 
 if (process.env.DATABASE_URL) {
+  console.log('Connecting via heroku..');
   db = new Client({
     connectionString: process.env.DATABASE_URL,
     ssl: true,
   });
 } else {
+  console.log('Connecting via local..')
   db = new Client({
     user: 'postgres',
     host: 'localhost',
     database: 'postgres',
-    password: process.env.DATABASE_PASSWORD || secret.dbpswrd,
+    password: secret.dbpswrd,
     port: 5432,
   });
 }
