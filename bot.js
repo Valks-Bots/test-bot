@@ -48,13 +48,10 @@ client.on('ready', () => {
 let queue = [];
 let intervalID;
 
-client.on('message', async msg => {
-  if (msg.author.bot) return;
-  if (msg.channel.type == 'dm') return;
-  if (!msg.content.startsWith(prefix)) return;
-
-  if (msg.content.startsWith(prefix + 'play')) {
+const commands = {
+  'play': (msg) => {
     if (!msg.member.voiceChannel) return msg.channel.send('Join a voice channel first.');
+
     msg.member.voiceChannel.join().then(async connection => {
       const opts = {
         maxResults: 10,
@@ -69,7 +66,6 @@ client.on('message', async msg => {
       };
       let song = msg.content.split(' ').slice(1).join(' ');
       if (!song) return msg.channel.send('Specify a song!');
-      let foundSong;
       let songs = [];
       search(song, opts, async function(err, results) {
         if (err) return console.log(err);
@@ -90,97 +86,106 @@ client.on('message', async msg => {
             let songPicker = msg.channel.createMessageCollector(m => m);
             songPicker.on('collect', async m => {
               if (isNaN(m)) return;
-              await m.delete();
+              //await m.delete();
               let number = await parseInt(m) - 1;
               if (number < 0 || number > songs.length) return;
-              queue.push({
+              songPicker.stop();
+              message.delete();
+              //channel.fetchMessages({ limit: 10 })
+              if (!queue.hasOwnProperty(msg.guild.id)) queue[msg.guild.id] = {}, queue[msg.guild.id].playing = false, queue[msg.guild.id].songs = [];
+              queue[msg.guild.id].songs.push({
                 url: songs[number].url,
                 name: songs[number].title
               });
-              const stream = await ytdl(queue[0].url, {
+              if (queue[msg.guild.id].playing) return msg.channel.send(embed('', `Added ${songs[number].title} to the queue.`));
+              const stream = await ytdl(queue[msg.guild.id].songs[0].url, {
                 filter: 'audioonly'
               });
               const dispatcher = connection.playStream(stream, streamOptions);
+              queue[msg.guild.id].playing = true;
+              msg.channel.send(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`)).then(async message => {
+                let collector_reaction = emoteCollector(message, ['▶', '⏸', '⏭'], msg.author.id);
+                dispatcher.on('start', async () => {
+                  let song_length = 0;
+                  ytdl.getInfo(songs[number].id, (err, info) => {
+                    song_length = info.length_seconds;
+                  });
 
-              let collector_reaction;
-              dispatcher.on('start', async () => {
-                let song_length = 0;
-                await ytdl.getInfo(songs[number].id, (err, info) => {
-                  song_length = info.length_seconds;
-                });
-                await songPicker.stop();
-                await message.edit(embed('', `Playing ${queue[0].name}`));
-                await message.react('▶');
-                await message.react('⏸');
-                await message.react('⏭');
+                  await message.edit(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`));
+                  await message.react('▶');
+                  await message.react('⏸');
+                  await message.react('⏭');
 
-                collector_reaction = emoteCollector(message, ['▶', '⏸', '⏭'], msg.author.id);
-                collector_reaction.on('collect', (messageReaction, reactionCollector) => {
-                  let reaction = messageReaction.emoji.name;
-                  if (reaction == '⏸') {
-                    if (!dispatcher.paused) {
-                      dispatcher.pause();
-                      clearInterval(intervalID);
+                  collector_reaction.on('collect', (messageReaction, reactionCollector) => {
+                    let reaction = messageReaction.emoji.name;
+                    if (reaction == '⏸') {
+                      if (!dispatcher.paused) {
+                        dispatcher.pause();
+                        clearInterval(intervalID);
+                      }
+                    }
+                    if (reaction == '▶') {
+                      if (dispatcher.paused) {
+                        dispatcher.resume();
+                        intervalID = setInterval(timeLeft, 15000);
+                      }
+                    }
+                    if (reaction == '⏭') {
+                      dispatcher.end();
+                      message.edit(embed('', `Skipped ${queue[msg.guild.id].songs[0].name}`));
+                    }
+                  });
+
+                  let progressBar = [];
+                  let progressBarLength = 40;
+                  for (let i = 0; i < progressBarLength; i++) {
+                    if (i == 0) {
+                      progressBar[i] = '[';
+                    } else if (i == progressBarLength - 1) {
+                      progressBar[i] = ']';
+                    } else {
+                      progressBar[i] = '-';
                     }
                   }
-                  if (reaction == '▶') {
-                    if (dispatcher.paused) {
-                      dispatcher.resume();
-                      intervalID = setInterval(timeLeft, 15000);
+
+                  intervalID = setInterval(timeLeft, 3000);
+
+                  function timeLeft() {
+                    let current_time = Math.floor(dispatcher.time / 1000);
+                    let percent = Math.floor(current_time / song_length * 100);
+                    let progressBarPosition = Math.floor(percent / 100 * progressBarLength);
+                    for (let i = 1; i < progressBarPosition - 2; i++) {
+                      progressBar[i] = '=';
                     }
-                  }
-                  if (reaction == '⏭') {
-                    dispatcher.end();
-                    message.edit(embed('', `Skipped ${queue[0].name}`));
+                    let theDate = new Date(dispatcher.time);
+                    let showTime = theDate.getMinutes() + ":" + (theDate.getSeconds() < 10 ? '0' : '') + theDate.getSeconds();
+
+                    let finalDate = new Date(song_length * 1000);
+                    let endTime = finalDate.getMinutes() + ":" + (finalDate.getSeconds() < 10 ? '0' : '') + finalDate.getSeconds();
+                    message.edit(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`, `${progressBar.join('')} [${showTime} / ${endTime}]`));
                   }
                 });
 
-                let progressBar = [];
-                let progressBarLength = 40;
-                for (let i = 0; i < progressBarLength; i++) {
-                  if (i == 0) {
-                    progressBar[i] = '[';
-                  } else if (i == progressBarLength - 1) {
-                    progressBar[i] = ']';
-                  } else {
-                    progressBar[i] = '-';
+                dispatcher.on('end', async () => {
+                  clearInterval(intervalID);
+                  await collector_reaction.stop();
+                  message.clearReactions();
+                  message.edit(embed('', `Finished playing ${queue[msg.guild.id].songs[0].name}`));
+                  queue[msg.guild.id].playing = false;
+                  queue[msg.guild.id].songs.shift();
+                  if (queue[msg.guild.id].songs.length != 0) {
+                    commands.play(msg);
                   }
-                }
+                });
 
-                var intervalID = setInterval(timeLeft, 3000);
+                dispatcher.on('error', (err) => {
+                  console.log(err);
+                });
 
-                function timeLeft() {
-                  let current_time = Math.floor(dispatcher.time / 1000);
-                  let percent = Math.floor(current_time / song_length * 100);
-                  let progressBarPosition = Math.floor(percent / 100 * progressBarLength);
-                  for (let i = 1; i < progressBarPosition - 2; i++) {
-                    progressBar[i] = '=';
-                  }
-                  let theDate = new Date(dispatcher.time);
-                  let showTime = theDate.getMinutes() + ":" + (theDate.getSeconds() < 10 ? '0' : '') + theDate.getSeconds();
-
-                  let finalDate = new Date(song_length * 1000);
-                  let endTime = finalDate.getMinutes() + ":" + (finalDate.getSeconds() < 10 ? '0' : '') + finalDate.getSeconds();
-                  message.edit(embed('', `Playing ${queue[0].name}`, `${progressBar.join('')} [${showTime} / ${endTime}]`));
-                }
+                dispatcher.on('debug', (info) => {
+                  console.log(info);
+                });
               });
-
-              dispatcher.on('end', () => {
-                clearInterval(intervalID);
-                collector_reaction.stop();
-                message.clearReactions();
-                message.edit(embed('', `Finished playing ${queue[0].name}`));
-              });
-
-              dispatcher.on('error', (err) => {
-                console.log(err);
-              });
-
-              dispatcher.on('debug', (info) => {
-                console.log(info);
-              });
-
-
 
               /*let collector = msg.channel.createMessageCollector(m => m);
               collector.on('collect', m => {
@@ -197,6 +202,19 @@ client.on('message', async msg => {
         });
       });
     });
+  }
+};
+
+client.on('message', async msg => {
+  if (msg.author.bot) return;
+  if (msg.channel.type == 'dm') return;
+  if (!msg.content.startsWith(prefix)) return;
+  if (commands.hasOwnProperty(msg.content.toLowerCase().slice(prefix.length).split(' ')[0])) {
+    commands[msg.content.toLowerCase().slice(prefix.length).split(' ')[0]](msg);
+  }
+
+  if (msg.content.startsWith(prefix + 'play')) {
+
   }
 });
 
