@@ -252,7 +252,12 @@ function embed(title, desc, footer) {
   }
 }
 
-client.login(process.env.BOT_TOKEN || dev_mode ? secret.dev_token : secret.token);
+if (dev_mode) {
+  client.login(dev_mode ? secret.dev_token : secret.token);
+} else {
+  client.login(process.env.BOT_TOKEN);
+}
+
 
 /*db.query('CREATE TABLE IF NOT EXISTS supertable (name text UNIQUE, i integer)');
 db.query('INSERT INTO supertable (name, i) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING;', [msg.author.id, 3]);
