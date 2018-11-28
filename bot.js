@@ -46,11 +46,10 @@ client.on('ready', () => {
 });
 
 let queue = [];
-let intervalID;
 
 const commands = {
   'play': (msg) => {
-    if (!msg.member.voiceChannel) return msg.channel.send('Join a voice channel first.');
+    if (!msg.member.voiceChannel) return msg.channel.send(embed('', 'Join a voice channel first.'));
 
     msg.member.voiceChannel.join().then(async connection => {
       const opts = {
@@ -90,9 +89,10 @@ const commands = {
               let number = await parseInt(m) - 1;
               if (number < 0 || number > songs.length) return;
               songPicker.stop();
+              m.delete();
               message.delete();
               //channel.fetchMessages({ limit: 10 })
-              if (!queue.hasOwnProperty(msg.guild.id)) queue[msg.guild.id] = {}, queue[msg.guild.id].playing = false, queue[msg.guild.id].songs = [];
+              if (!queue.hasOwnProperty(msg.guild.id)) queue[msg.guild.id] = {}, queue[msg.guild.id].playing = false, queue[msg.guild.id].repeat = false, queue[msg.guild.id].songs = [];
               queue[msg.guild.id].songs.push({
                 url: songs[number].url,
                 name: songs[number].title
@@ -108,8 +108,8 @@ const commands = {
                 });
                 const dispatcher = connection.playStream(stream, streamOptions);
 
-                msg.channel.send(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`)).then(async message => {
-                  let collector_reaction = emoteCollector(message, ['▶', '⏸', '⏭'], msg.author.id);
+                msg.channel.send(embed('', `Getting the party ready..`)).then(async message => {
+                  let collector_reaction = emoteCollector(message, ['▶', '⏸', '⏭', '🔁'], msg.author.id);
                   dispatcher.on('start', async () => {
                     let song_length = 0;
                     ytdl.getInfo(songs[number].id, (err, info) => {
@@ -120,24 +120,38 @@ const commands = {
                     await message.react('▶');
                     await message.react('⏸');
                     await message.react('⏭');
+                    await message.react('🔁');
 
                     collector_reaction.on('collect', (messageReaction, reactionCollector) => {
                       let reaction = messageReaction.emoji.name;
                       if (reaction == '⏸') {
                         if (!dispatcher.paused) {
                           dispatcher.pause();
-                          clearInterval(intervalID);
+                          clearInterval(queue[msg.guild.id].intervalID);
+                          message.reactions.find(val => val.emoji.name === '⏸').remove(msg.author.id);
                         }
                       }
                       if (reaction == '▶') {
                         if (dispatcher.paused) {
                           dispatcher.resume();
-                          intervalID = setInterval(timeLeft, 15000);
+                          queue[msg.guild.id].intervalID = setInterval(timeLeft, 15000);
+                          message.reactions.find(val => val.emoji.name === '▶').remove(msg.author.id);
                         }
                       }
                       if (reaction == '⏭') {
+                        queue[msg.guild.id].repeat = false;
                         dispatcher.end();
                         message.edit(embed('', `Skipped ${queue[msg.guild.id].songs[0].name}`));
+                      }
+                      if (reaction == '🔁') {
+                        if (!queue[msg.guild.id].repeat) {
+                          queue[msg.guild.id].repeat = true;
+                          msg.channel.send(embed('', `${queue[msg.guild.id].songs[0].name} will now repeat.`));
+                        } else {
+                          queue[msg.guild.id].repeat = false;
+                          msg.channel.send(embed('', `${queue[msg.guild.id].songs[0].name} will no longer repeat.`));
+                        }
+                        message.reactions.find(val => val.emoji.name === '🔁').remove(msg.author.id);
                       }
                     });
 
@@ -153,7 +167,7 @@ const commands = {
                       }
                     }
 
-                    intervalID = setInterval(timeLeft, 3000);
+                    queue[msg.guild.id].intervalID = setInterval(timeLeft, 15000);
 
                     function timeLeft() {
                       let current_time = Math.floor(dispatcher.time / 1000);
@@ -172,12 +186,12 @@ const commands = {
                   });
 
                   dispatcher.on('end', async () => {
-                    clearInterval(intervalID);
+                    clearInterval(queue[msg.guild.id].intervalID);
                     await collector_reaction.stop();
                     message.clearReactions();
                     message.edit(embed('', `Finished playing ${queue[msg.guild.id].songs[0].name}`));
                     queue[msg.guild.id].playing = false;
-                    queue[msg.guild.id].songs.shift();
+                    if (!queue[msg.guild.id].repeat) queue[msg.guild.id].songs.shift();
                     if (queue[msg.guild.id].songs.length != 0) {
                       playSong();
                     }
