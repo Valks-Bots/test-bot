@@ -98,94 +98,101 @@ const commands = {
                 name: songs[number].title
               });
               if (queue[msg.guild.id].playing) return msg.channel.send(embed('', `Added ${songs[number].title} to the queue.`));
-              const stream = await ytdl(queue[msg.guild.id].songs[0].url, {
-                filter: 'audioonly'
-              });
-              const dispatcher = connection.playStream(stream, streamOptions);
-              queue[msg.guild.id].playing = true;
-              msg.channel.send(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`)).then(async message => {
-                let collector_reaction = emoteCollector(message, ['▶', '⏸', '⏭'], msg.author.id);
-                dispatcher.on('start', async () => {
-                  let song_length = 0;
-                  ytdl.getInfo(songs[number].id, (err, info) => {
-                    song_length = info.length_seconds;
-                  });
 
-                  await message.edit(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`));
-                  await message.react('▶');
-                  await message.react('⏸');
-                  await message.react('⏭');
+              playSong();
 
-                  collector_reaction.on('collect', (messageReaction, reactionCollector) => {
-                    let reaction = messageReaction.emoji.name;
-                    if (reaction == '⏸') {
-                      if (!dispatcher.paused) {
-                        dispatcher.pause();
-                        clearInterval(intervalID);
+              async function playSong() {
+                queue[msg.guild.id].playing = true;
+                const stream = await ytdl(queue[msg.guild.id].songs[0].url, {
+                  filter: 'audioonly'
+                });
+                const dispatcher = connection.playStream(stream, streamOptions);
+
+                msg.channel.send(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`)).then(async message => {
+                  let collector_reaction = emoteCollector(message, ['▶', '⏸', '⏭'], msg.author.id);
+                  dispatcher.on('start', async () => {
+                    let song_length = 0;
+                    ytdl.getInfo(songs[number].id, (err, info) => {
+                      song_length = info.length_seconds;
+                    });
+
+                    await message.edit(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`));
+                    await message.react('▶');
+                    await message.react('⏸');
+                    await message.react('⏭');
+
+                    collector_reaction.on('collect', (messageReaction, reactionCollector) => {
+                      let reaction = messageReaction.emoji.name;
+                      if (reaction == '⏸') {
+                        if (!dispatcher.paused) {
+                          dispatcher.pause();
+                          clearInterval(intervalID);
+                        }
+                      }
+                      if (reaction == '▶') {
+                        if (dispatcher.paused) {
+                          dispatcher.resume();
+                          intervalID = setInterval(timeLeft, 15000);
+                        }
+                      }
+                      if (reaction == '⏭') {
+                        dispatcher.end();
+                        message.edit(embed('', `Skipped ${queue[msg.guild.id].songs[0].name}`));
+                      }
+                    });
+
+                    let progressBar = [];
+                    let progressBarLength = 40;
+                    for (let i = 0; i < progressBarLength; i++) {
+                      if (i == 0) {
+                        progressBar[i] = '[';
+                      } else if (i == progressBarLength - 1) {
+                        progressBar[i] = ']';
+                      } else {
+                        progressBar[i] = '-';
                       }
                     }
-                    if (reaction == '▶') {
-                      if (dispatcher.paused) {
-                        dispatcher.resume();
-                        intervalID = setInterval(timeLeft, 15000);
+
+                    intervalID = setInterval(timeLeft, 3000);
+
+                    function timeLeft() {
+                      let current_time = Math.floor(dispatcher.time / 1000);
+                      let percent = Math.floor(current_time / song_length * 100);
+                      let progressBarPosition = Math.floor(percent / 100 * progressBarLength);
+                      for (let i = 1; i < progressBarPosition - 2; i++) {
+                        progressBar[i] = '=';
                       }
-                    }
-                    if (reaction == '⏭') {
-                      dispatcher.end();
-                      message.edit(embed('', `Skipped ${queue[msg.guild.id].songs[0].name}`));
+                      let theDate = new Date(dispatcher.time);
+                      let showTime = theDate.getMinutes() + ":" + (theDate.getSeconds() < 10 ? '0' : '') + theDate.getSeconds();
+
+                      let finalDate = new Date(song_length * 1000);
+                      let endTime = finalDate.getMinutes() + ":" + (finalDate.getSeconds() < 10 ? '0' : '') + finalDate.getSeconds();
+                      message.edit(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`, `${progressBar.join('')} [${showTime} / ${endTime}]`));
                     }
                   });
 
-                  let progressBar = [];
-                  let progressBarLength = 40;
-                  for (let i = 0; i < progressBarLength; i++) {
-                    if (i == 0) {
-                      progressBar[i] = '[';
-                    } else if (i == progressBarLength - 1) {
-                      progressBar[i] = ']';
-                    } else {
-                      progressBar[i] = '-';
+                  dispatcher.on('end', async () => {
+                    clearInterval(intervalID);
+                    await collector_reaction.stop();
+                    message.clearReactions();
+                    message.edit(embed('', `Finished playing ${queue[msg.guild.id].songs[0].name}`));
+                    queue[msg.guild.id].playing = false;
+                    queue[msg.guild.id].songs.shift();
+                    if (queue[msg.guild.id].songs.length != 0) {
+                      playSong();
                     }
-                  }
+                  });
 
-                  intervalID = setInterval(timeLeft, 3000);
+                  dispatcher.on('error', (err) => {
+                    console.log(err);
+                  });
 
-                  function timeLeft() {
-                    let current_time = Math.floor(dispatcher.time / 1000);
-                    let percent = Math.floor(current_time / song_length * 100);
-                    let progressBarPosition = Math.floor(percent / 100 * progressBarLength);
-                    for (let i = 1; i < progressBarPosition - 2; i++) {
-                      progressBar[i] = '=';
-                    }
-                    let theDate = new Date(dispatcher.time);
-                    let showTime = theDate.getMinutes() + ":" + (theDate.getSeconds() < 10 ? '0' : '') + theDate.getSeconds();
-
-                    let finalDate = new Date(song_length * 1000);
-                    let endTime = finalDate.getMinutes() + ":" + (finalDate.getSeconds() < 10 ? '0' : '') + finalDate.getSeconds();
-                    message.edit(embed('', `Playing ${queue[msg.guild.id].songs[0].name}`, `${progressBar.join('')} [${showTime} / ${endTime}]`));
-                  }
+                  dispatcher.on('debug', (info) => {
+                    console.log(info);
+                  });
                 });
+              }
 
-                dispatcher.on('end', async () => {
-                  clearInterval(intervalID);
-                  await collector_reaction.stop();
-                  message.clearReactions();
-                  message.edit(embed('', `Finished playing ${queue[msg.guild.id].songs[0].name}`));
-                  queue[msg.guild.id].playing = false;
-                  queue[msg.guild.id].songs.shift();
-                  if (queue[msg.guild.id].songs.length != 0) {
-                    commands.play(msg);
-                  }
-                });
-
-                dispatcher.on('error', (err) => {
-                  console.log(err);
-                });
-
-                dispatcher.on('debug', (info) => {
-                  console.log(info);
-                });
-              });
 
               /*let collector = msg.channel.createMessageCollector(m => m);
               collector.on('collect', m => {
